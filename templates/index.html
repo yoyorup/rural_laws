@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set depth = 0 %}
+{% set active_page = "index" %}
+
+{% block title %}今日更新 · 农村法律每日速览{% endblock %}
+{% block page_title %}今日更新{% endblock %}
+
+{% block content %}
+<p style="color:#666; margin-bottom:20px;">
+  {{ today }} &nbsp;·&nbsp;
+  共 <strong>{{ law_details | length }}</strong> 部农村相关法律/法规更新
+</p>
+
+{% if law_details %}
+  {% for ld in law_details %}
+  <div class="card">
+    <div class="card-title">
+      📄 {{ ld.law.title }}
+      <span class="score-pill">相关度 {{ "%.1f"|format(ld.law.relevance_score) }}</span>
+    </div>
+    <div class="card-meta">
+      <span>
+        <span class="badge badge-{{ ld.law.source }}">{{ ld.law.source | upper }}</span>
+      </span>
+      {% if ld.law.publish_date %}
+      <span>发布：{{ ld.law.publish_date }}</span>
+      {% endif %}
+      {% if ld.law.effective_date %}
+      <span>施行：{{ ld.law.effective_date }}</span>
+      {% endif %}
+      <span>条文：{{ ld.clauses | length }} 条</span>
+      {% if ld.news %}
+      <span>相关新闻：{{ ld.news | length }}</span>
+      {% endif %}
+    </div>
+
+    {% if ld.summary %}
+    <div class="card-summary">{{ ld.summary.summary | truncate_text(300) }}</div>
+    {% elif ld.law.raw_text %}
+    <div class="card-summary">{{ ld.law.raw_text | truncate_text(200) }}</div>
+    {% endif %}
+
+    <div class="card-actions">
+      <a class="btn btn-primary"
+         href="laws/{{ today }}/{{ ld.law.id }}.html">
+        查看详情 →
+      </a>
+      {% if ld.law.source_url %}
+      <a class="btn" style="margin-left:8px; background:#f5f5f0; color:#555; border:1px solid #ccc;"
+         href="{{ ld.law.source_url }}" target="_blank" rel="noopener">
+        原文链接
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+{% else %}
+  <div class="empty-state">
+    <div class="icon">📋</div>
+    <p>今日暂无新增或更新的农村法律法规</p>
+    <p style="margin-top:8px; font-size:13px;">
+      系统将在每日 00:00 自动抓取，或使用
+      <code>python main.py --run-now</code> 手动触发
+    </p>
+  </div>
+{% endif %}
+
+{% if all_dates and all_dates | length > 1 %}
+<div class="section-header">近期记录</div>
+<div style="display:flex; flex-wrap:wrap; gap:8px;">
+  {% for d in all_dates[:14] %}
+  <a href="laws/{{ d }}/index.html" style="
+    background:{% if d == today %}#1a6bbf{% else %}#fff{% endif %};
+    color:{% if d == today %}#fff{% else %}#555{% endif %};
+    border:1px solid #ddd;
+    border-radius:4px;
+    padding:4px 12px;
+    font-size:13px;
+  ">{{ d }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

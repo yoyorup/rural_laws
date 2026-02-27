@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% set depth = 0 %}
+{% set active_page = "archive" %}
+
+{% block title %}历史归档 · 农村法律每日速览{% endblock %}
+{% block page_title %}历史归档{% endblock %}
+
+{% block extra_head %}
+<style>
+  .archive-date-group {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e4e4dc;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .archive-date-header {
+    background: #1a3a5c;
+    color: #fff;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .archive-date-header .count {
+    font-size: 12px;
+    background: rgba(255,255,255,0.2);
+    padding: 2px 10px;
+    border-radius: 10px;
+  }
+  .archive-law-item {
+    padding: 12px 20px;
+    border-bottom: 1px solid #f0f0ea;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .archive-law-item:last-child { border-bottom: none; }
+  .archive-law-title {
+    color: #1a3a5c;
+    font-size: 14px;
+    flex: 1;
+  }
+  .archive-law-meta {
+    color: #999;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<p style="color:#666; margin-bottom:24px;">
+  共 <strong>{{ archive_data | length }}</strong> 天记录，
+  <strong>{{ archive_data | sum(attribute='laws') | map(attribute='__len__') | list | sum if false else
+    archive_data | map(attribute='laws') | map('length') | sum }}</strong> 部法律法规
+</p>
+
+{% if archive_data %}
+  {% for entry in archive_data %}
+  <div class="archive-date-group">
+    <div class="archive-date-header">
+      <span>{{ entry.date }}</span>
+      <span class="count">{{ entry.laws | length }} 部</span>
+    </div>
+    {% for law in entry.laws %}
+    <div class="archive-law-item">
+      <a href="laws/{{ entry.date }}/{{ law.id }}.html" class="archive-law-title">
+        {{ law.title }}
+      </a>
+      <div class="archive-law-meta">
+        <span class="badge badge-{{ law.source }}">{{ law.source | upper }}</span>
+        {% if law.publish_date %}
+        &nbsp;{{ law.publish_date }}
+        {% endif %}
+        <span class="score-pill">{{ "%.1f"|format(law.relevance_score) }}</span>
+      </div>
+    </div>
+    {% else %}
+    <div style="padding:14px 20px; color:#aaa; font-size:13px;">（该日无记录）</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state">
+    <div class="icon">🗂️</div>
+    <p>暂无历史记录</p>
+  </div>
+{% endif %}
+{% endblock %}

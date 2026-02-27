@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% set depth = 2 %}
+{% set active_page = "index" %}
+
+{% block title %}{{ law.title }} · 农村法律每日速览{% endblock %}
+{% block page_title %}{{ law.title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .law-header {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e4e4dc;
+    padding: 22px 26px;
+    margin-bottom: 24px;
+  }
+  .law-header h2 {
+    font-size: 20px;
+    color: #1a3a5c;
+    margin-bottom: 10px;
+  }
+  .clause-block {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e4e4dc;
+    padding: 20px 26px;
+    margin-bottom: 14px;
+  }
+  .clause-block:hover {
+    border-color: #b0c8e8;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  }
+  .clause-no {
+    font-weight: bold;
+    color: #1a3a5c;
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+  .clause-raw {
+    color: #444;
+    background: #f8f8f4;
+    border-left: 3px solid #c8d8e8;
+    padding: 10px 14px;
+    border-radius: 0 4px 4px 0;
+    margin-bottom: 12px;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .clause-explanation {
+    margin-bottom: 8px;
+  }
+  .clause-explanation .label {
+    display: inline-block;
+    background: #e8f4e8;
+    color: #2d6a2d;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 12px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .clause-example {
+    margin-top: 6px;
+  }
+  .clause-example .label {
+    display: inline-block;
+    background: #fff3e0;
+    color: #8a4500;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 12px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .news-list {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e4e4dc;
+    padding: 18px 24px;
+  }
+  .news-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0ea;
+  }
+  .news-item:last-child { border-bottom: none; }
+  .news-source-tag {
+    display: inline-block;
+    background: #eee;
+    color: #666;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 11px;
+    margin-right: 6px;
+  }
+  .news-date {
+    color: #999;
+    font-size: 12px;
+    margin-left: 6px;
+  }
+  .back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #666;
+    font-size: 13px;
+  }
+  .back-link:hover { color: #1a6bbf; }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="../../index.html" class="back-link">← 返回今日列表</a>
+
+<!-- Law header -->
+<div class="law-header">
+  <h2>{{ law.title }}</h2>
+  <div class="card-meta">
+    <span>
+      <span class="badge badge-{{ law.source }}">{{ law.source | upper }}</span>
+    </span>
+    {% if law.publish_date %}
+    <span>发布日期：{{ law.publish_date }}</span>
+    {% endif %}
+    {% if law.effective_date %}
+    <span>施行日期：{{ law.effective_date }}</span>
+    {% endif %}
+    {% if law.source_url %}
+    <span>
+      <a href="{{ law.source_url }}" target="_blank" rel="noopener">原文链接 ↗</a>
+    </span>
+    {% endif %}
+  </div>
+
+  {% if summary %}
+  <div style="margin-top:14px; padding:14px 16px; background:#f4f8ff; border-radius:6px; border-left:4px solid #1a6bbf;">
+    <strong style="color:#1a3a5c;">法律简介：</strong>
+    <span style="color:#444;">{{ summary.summary }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Clauses -->
+{% if clauses %}
+<div class="section-header">条文解读</div>
+
+{% for clause in clauses %}
+<div class="clause-block">
+  <div class="clause-no">{{ clause.article_no }}</div>
+
+  {% if clause.raw_text %}
+  <div class="clause-raw">{{ clause.raw_text }}</div>
+  {% endif %}
+
+  {% if clause.explanation %}
+  <div class="clause-explanation">
+    <span class="label">📖 解读</span>
+    {{ clause.explanation }}
+  </div>
+  {% endif %}
+
+  {% if clause.example %}
+  <div class="clause-example">
+    <span class="label">💡 举例</span>
+    {{ clause.example }}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+  <p>条文解读正在生成中，请稍后刷新页面。</p>
+</div>
+{% endif %}
+
+<!-- Related news -->
+{% if news %}
+<div class="section-header">相关新闻</div>
+<div class="news-list">
+  {% for item in news %}
+  <div class="news-item">
+    <span class="news-source-tag">{{ item.source }}</span>
+    <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+    {% if item.published_at %}
+    <span class="news-date">{{ item.published_at }}</span>
+    {% endif %}
+    {% if item.snippet %}
+    <div style="color:#777; font-size:13px; margin-top:4px; margin-left:68px;">
+      {{ item.snippet | truncate_text(150) }}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="margin-top: 30px;">
+  <a href="../../index.html" class="btn btn-primary">← 返回今日列表</a>
+</div>
+{% endblock %}
