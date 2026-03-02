@@ -8,7 +8,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from config import REQUEST_TIMEOUT, REQUEST_RETRY_TIMES, REQUEST_RETRY_BACKOFF
+from config import REQUEST_TIMEOUT, REQUEST_RETRY_TIMES, REQUEST_RETRY_BACKOFF, VERIFY_SSL
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,10 @@ def build_session() -> requests.Session:
     adapter = HTTPAdapter(max_retries=retry)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
+
+    # 设置 SSL 验证
+    session.verify = VERIFY_SSL
+
     return session
 
 

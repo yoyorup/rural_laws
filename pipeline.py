@@ -50,10 +50,16 @@ def run_pipeline(target_date: Optional[str] = None, provider_name: Optional[str]
         logger.info(f"  NPC: {len(npc_laws)} laws")
         all_laws.extend(npc_laws)
 
+        # 关闭 Playwright
+        npc.playwright.close()
+
         moa = MoaFetcher()
         moa_laws = moa.fetch_recent_laws()
         logger.info(f"  MOA: {len(moa_laws)} laws")
         all_laws.extend(moa_laws)
+
+        # 关闭 Playwright
+        moa.playwright.close()
 
         stats["laws_fetched"] = len(all_laws)
 

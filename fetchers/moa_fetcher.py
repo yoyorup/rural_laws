@@ -1,5 +1,6 @@
 """Fetcher for 农业农村部 (moa.gov.cn) policy documents."""
 
+import asyncio
 import hashlib
 import logging
 import re
@@ -9,9 +10,10 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from config import MOA_BASE_URL, MOA_POLICY_URL, NPC_DAYS_BACK
+from config import MOA_BASE_URL, MOA_POLICY_URL, NPC_DAYS_BACK, REQUEST_TIMEOUT
 from database.models import Law
 from fetchers.base_fetcher import BaseFetcher
+from fetchers.playwright_fetcher import PlaywrightFetcher
 from processors.text_cleaner import clean_html_text
 
 logger = logging.getLogger(__name__)
@@ -23,11 +25,14 @@ class MoaFetcher(BaseFetcher):
     Ministry of Agriculture and Rural Affairs (moa.gov.cn).
     """
 
+    # 使用更可靠的 URL
     POLICY_SECTIONS = [
-        "https://www.moa.gov.cn/gk/zcfg/",           # 法规
-        "https://www.moa.gov.cn/gk/zcfg/nybgz/",     # 农业部规章
-        "https://www.moa.gov.cn/gk/zcfg/flfg/",      # 法律法规
+        "http://www.moa.gov.cn/gk/zcfg/",           # 法规
     ]
+
+    def __init__(self):
+        super().__init__()
+        self.playwright = PlaywrightFetcher()
 
     def fetch_recent_laws(self, days_back: int = NPC_DAYS_BACK) -> List[Law]:
         """Fetch recent policy documents from MOA."""
@@ -49,20 +54,25 @@ class MoaFetcher(BaseFetcher):
 
     def _fetch_section(self, section_url: str, cutoff: datetime) -> List[Law]:
         """Fetch a listing page and extract law links."""
-        resp = self.get(section_url)
-        if resp is None:
+
+        # 使用 Playwright 获取页面
+        html_content = asyncio.run(
+            self.playwright.fetch_page(section_url, wait_for_selector="ul.list", timeout=60000)
+        )
+
+        if not html_content:
+            self.logger.warning(f"Failed to fetch section: {section_url}")
             return []
 
         try:
-            resp.encoding = resp.apparent_encoding or "utf-8"
-            soup = BeautifulSoup(resp.text, "lxml")
+            soup = BeautifulSoup(html_content, "lxml")
         except Exception as e:
             self.logger.error(f"Error parsing {section_url}: {e}")
             return []
 
         laws = []
-        # Find list items with dates
-        list_items = soup.select("ul.list li, .newslist li, .policy-list li, li")
+        # Find list items with dates - 尝试多种选择器
+        list_items = soup.select("ul.list li, .newslist li, .policy-list li, li, .artical_list li")
 
         for item in list_items:
             link = item.find("a", href=True)
@@ -70,9 +80,18 @@ class MoaFetcher(BaseFetcher):
                 continue
 
             title = link.get_text(strip=True)
-            href = link["href"]
+            href = link.get("href", "")
+
+            # 跳过 JavaScript 链接和无效链接
+            if not href or href.startswith("javascript") or href == "#":
+                continue
+
             if not href.startswith("http"):
                 href = urljoin(section_url, href)
+
+            # 跳过非 http 链接
+            if not href.startswith("http"):
+                continue
 
             # Extract date from item text
             date_str = self._extract_date_from_text(item.get_text())
@@ -90,7 +109,7 @@ class MoaFetcher(BaseFetcher):
             law = self._fetch_law_detail(title, href, date_str)
             if law:
                 laws.append(law)
-                self.polite_sleep(0.8)
+                self.polite_sleep(0.5)
 
         return laws
 
@@ -115,13 +134,21 @@ class MoaFetcher(BaseFetcher):
         self, title: str, url: str, date_str: Optional[str]
     ) -> Optional[Law]:
         """Fetch detail page and construct Law object."""
-        resp = self.get(url)
-        if resp is None:
-            return None
+
+        # 使用 Playwright 获取详情页
+        html_content = asyncio.run(
+            self.playwright.fetch_page(url, wait_for_selector=".article", timeout=30000)
+        )
+
+        if not html_content:
+            # 如果 Playwright 失败，尝试普通请求
+            resp = self.get(url)
+            if resp is None:
+                return None
+            html_content = resp.text
 
         try:
-            resp.encoding = resp.apparent_encoding or "utf-8"
-            soup = BeautifulSoup(resp.text, "lxml")
+            soup = BeautifulSoup(html_content, "lxml")
 
             # Extract content
             content_elem = (

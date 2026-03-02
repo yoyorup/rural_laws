@@ -15,7 +15,7 @@ import logging
 import sys
 from datetime import date
 
-from config import LOG_LEVEL, DB_PATH
+from config import LOG_LEVEL, MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE
 
 
 def setup_logging(level: str = LOG_LEVEL) -> None:
@@ -64,7 +64,7 @@ def cmd_schedule() -> None:
 def cmd_init_db() -> None:
     from database import db_manager
     db_manager.init_db()
-    print(f"  Database initialized at: {DB_PATH}")
+    print(f"  Database initialized at: {MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}")
 
 
 def main() -> None:

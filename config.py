@@ -11,12 +11,19 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", BASE_DIR / "output"))
 TEMPLATES_DIR = BASE_DIR / "templates"
-DB_PATH = DATA_DIR / "laws.db"
 
 # Ensure directories exist
 DATA_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 (OUTPUT_DIR / "laws").mkdir(exist_ok=True)
+
+# --- MySQL ---
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "rural_law_db")
+MYSQL_UNIX_SOCKET = os.getenv("MYSQL_UNIX_SOCKET", "")  # e.g. /tmp/mysql.sock
 
 # --- API ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -48,6 +55,7 @@ RURAL_KEYWORDS = [
 REQUEST_TIMEOUT = 30          # seconds
 REQUEST_RETRY_TIMES = 3
 REQUEST_RETRY_BACKOFF = 2     # seconds
+VERIFY_SSL = os.getenv("VERIFY_SSL", "false").lower() == "true"  # 是否验证 SSL
 
 # NPC Law Database
 NPC_BASE_URL = "https://flk.npc.gov.cn"

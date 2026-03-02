@@ -1,7 +1,7 @@
 """Fetcher for 全国人大法律法规数据库 (flk.npc.gov.cn)."""
 
 import hashlib
-import json
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from config import NPC_BASE_URL, NPC_SEARCH_API, NPC_SEARCH_KEYWORDS, NPC_DAYS_BACK
 from database.models import Law
 from fetchers.base_fetcher import BaseFetcher
+from fetchers.playwright_fetcher import PlaywrightFetcher
 from processors.text_cleaner import clean_html_text
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,11 @@ class NpcFetcher(BaseFetcher):
 
     SEARCH_URL = "https://flk.npc.gov.cn/api/"
     DETAIL_BASE = "https://flk.npc.gov.cn"
+    WEB_SEARCH_URL = "https://flk.npc.gov.cn/fl.html"  # 网页搜索页面
+
+    def __init__(self):
+        super().__init__()
+        self.playwright = PlaywrightFetcher()
 
     def fetch_recent_laws(self, days_back: int = NPC_DAYS_BACK) -> List[Law]:
         """Fetch laws published/revised within the last N days."""
@@ -48,66 +54,157 @@ class NpcFetcher(BaseFetcher):
     def _search_keyword(self, keyword: str, cutoff: datetime) -> List[Law]:
         """Search for laws by keyword and return list of Law objects."""
         laws = []
-        page = 1
-        page_size = 10
 
-        while True:
-            params = {
-                "searchType": "title,summary",
-                "sortTr": "f_bbrq_s desc",
-                "page": page,
-                "size": page_size,
-                "rn": keyword,  # search query
-            }
+        # 使用 Playwright 执行搜索
+        html_content = asyncio.run(
+            self.playwright.search_npc(keyword, timeout=60000)
+        )
 
-            resp = self.post(
-                self.SEARCH_URL,
-                json=params,
-                headers={"Content-Type": "application/json"},
-            )
+        if not html_content:
+            self.logger.warning(f"Failed to search NPC for keyword={keyword}")
+            return laws
 
-            if resp is None:
-                # Fallback: try GET-based search
-                resp = self._fallback_search(keyword, page)
-                if resp is None:
-                    break
+        try:
+            soup = BeautifulSoup(html_content, "lxml")
+        except Exception as e:
+            self.logger.warning(f"Failed to parse search results for keyword={keyword}: {e}")
+            return laws
 
-            try:
-                data = resp.json()
-            except (ValueError, AttributeError):
-                self.logger.warning(f"Failed to parse JSON for keyword={keyword} page={page}")
-                break
+        # 解析搜索结果列表
+        items = self._parse_search_results(soup)
+        if not items:
+            self.logger.warning(f"No search results found for keyword={keyword}")
+            return laws
 
-            items = data.get("result", {}).get("data", []) if isinstance(data, dict) else []
-            if not items:
-                break
+        for item in items:
+            publish_date_str = item.get("date", "")
+            if publish_date_str:
+                try:
+                    pub_dt = datetime.strptime(publish_date_str[:10], "%Y-%m-%d")
+                    if pub_dt < cutoff:
+                        break
+                except ValueError:
+                    pass
 
-            for item in items:
-                publish_date_str = item.get("f_bbrq_s", "") or item.get("f_fbrq_s", "")
-                if publish_date_str:
-                    try:
-                        pub_dt = datetime.strptime(publish_date_str[:10], "%Y-%m-%d")
-                        if pub_dt < cutoff:
-                            return laws  # results are sorted desc, stop early
-                    except ValueError:
-                        pass
-
-                law = self._item_to_law(item)
-                if law:
-                    laws.append(law)
-
-            if len(items) < page_size:
-                break
-            page += 1
-            self.polite_sleep(0.5)
+            law = self._item_to_law_from_web(item)
+            if law:
+                laws.append(law)
 
         return laws
 
-    def _fallback_search(self, keyword: str, page: int) -> Optional[object]:
-        """Fallback GET search against NPC website."""
-        url = f"https://flk.npc.gov.cn/fl.html"
-        params = {"keyword": keyword, "page": page}
-        return self.get(url, params=params)
+    def _parse_search_results(self, soup: BeautifulSoup) -> List[dict]:
+        """Parse search results from the web page."""
+        items = []
+
+        # 尝试多种选择器来匹配 NPC 网站的搜索结果
+        # 搜索结果可能在不同的容器中
+        result_containers = soup.select(
+            ".search-result, .result-list, .list, ul.list, "
+            ".el-table__body, .el-table__row, .result-item, "
+            ".law-list, .law-item"
+        )
+
+        for container in result_containers:
+            # 在每个容器中查找链接和日期
+            links = container.find_all("a", href=True)
+
+            for link in links:
+                title = link.get_text(strip=True)
+                href = link.get("href", "")
+
+                # 过滤掉无效的标题
+                if not title or len(title) < 5:
+                    continue
+
+                # 跳过非法规链接
+                if any(x in href for x in ["javascript", "#", "mailto"]):
+                    continue
+
+                # 提取日期 - 在链接父元素或附近查找
+                parent = link.parent
+                date_str = ""
+                if parent:
+                    date_text = parent.get_text(strip=True)
+                    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", date_text)
+                    if date_match:
+                        date_str = date_match.group(1)
+
+                # 如果父元素没有日期，尝试从整个容器获取
+                if not date_str and container:
+                    date_text = container.get_text(strip=True)
+                    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", date_text)
+                    if date_match:
+                        date_str = date_match.group(1)
+
+                items.append({
+                    "title": title,
+                    "url": href,
+                    "date": date_str,
+                })
+
+        # 如果还是没有结果，尝试更通用的方法
+        if not items:
+            all_links = soup.find_all("a", href=True)
+            for link in all_links:
+                title = link.get_text(strip=True)
+                href = link.get("href", "")
+
+                # 法规链接通常包含特定模式
+                if not title or len(title) < 10:
+                    continue
+
+                # 跳过导航链接
+                if any(x in href for x in ["/fl.html", "/search", "javascript", "#", "mailto"]):
+                    continue
+
+                # 查找包含日期的元素
+                date_str = ""
+                parent = link.parent
+                if parent:
+                    date_text = parent.get_text(strip=True)
+                    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", date_text)
+                    if date_match:
+                        date_str = date_match.group(1)
+
+                items.append({
+                    "title": title,
+                    "url": href,
+                    "date": date_str,
+                })
+
+        return items
+
+    def _item_to_law_from_web(self, item: dict) -> Optional[Law]:
+        """Convert a web search result item to a Law dataclass."""
+        title = item.get("title", "").strip()
+        if not title:
+            return None
+
+        detail_url = item.get("url", "") or ""
+        if detail_url and not detail_url.startswith("http"):
+            detail_url = urljoin(self.DETAIL_BASE, detail_url)
+
+        if not detail_url:
+            law_hash = hashlib.md5(title.encode()).hexdigest()
+        else:
+            law_hash = hashlib.md5(detail_url.encode()).hexdigest()
+
+        publish_date = item.get("date", "")
+
+        # 获取全文
+        raw_text = ""
+        if detail_url:
+            raw_text = self._fetch_full_text(detail_url) or title
+
+        return Law(
+            id=law_hash,
+            title=title,
+            source="npc",
+            source_url=detail_url or "",
+            publish_date=publish_date or None,
+            content_hash=hashlib.md5(raw_text.encode()).hexdigest(),
+            raw_text=raw_text,
+        )
 
     def _item_to_law(self, item: dict) -> Optional[Law]:
         """Convert an API result item to a Law dataclass."""
@@ -150,13 +247,17 @@ class NpcFetcher(BaseFetcher):
     def _fetch_full_text(self, url: str) -> Optional[str]:
         """Fetch and extract the full text of a law from its detail page."""
         self.logger.info(f"Fetching full text: {url}")
-        resp = self.get(url)
-        if resp is None:
+
+        # 使用 Playwright 获取页面
+        html_content = asyncio.run(
+            self.playwright.fetch_page(url, wait_for_selector=".content", timeout=30000)
+        )
+
+        if not html_content:
             return None
 
         try:
-            resp.encoding = resp.apparent_encoding or "utf-8"
-            soup = BeautifulSoup(resp.text, "lxml")
+            soup = BeautifulSoup(html_content, "lxml")
 
             # Try common content selectors for NPC pages
             for selector in [
